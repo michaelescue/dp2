@@ -55,18 +55,20 @@
 #define IRQ_DISABLED		0x0000
 
 // Data Byte Defines
-#define WRITE_TO			0b00000000
-#define WRITE_TO_INS		0b01000000
+#define WRITE_TO			0x00
+#define WRITE_TO_RAM		0x40
+#define WRITE_TO_WCO		0x80
 #define FUNCTION_SET0		0x38
 #define FUNCTION_SET1		0x39
 #define BIAS_SET			0x14
-#define CONTRAST_SET		0b01110001
+#define CONTRAST_SET		0b01110101
 #define PWR_ICON_CON_SET	0x5E
 #define FOLLOWER_SET_ON		0x6D
 #define DISPLAY_SET_ON		0x0C
 #define CLR_DISPLAY			0x01
 #define ENTRY_MODE			0x06
 #define CGRAM_SET			0x41
+#define SET_DDRAM			0b10000001
 
 // Mask Defines
 #define DCOUNT_VAL	 		0x0000FFFF
@@ -82,6 +84,7 @@
 #define DATA_VAL			0xFF
 #define BUFSTAT_VAL			0x0000003F
 #define ARDY_BIT			0x00000004
+#define TXFIFO_CLR_BIT		0x00000040
 
 //I2C Communication Defines
 #define SLAVE_ADDR			0b0111100
@@ -89,7 +92,7 @@
 #define START_COND			0x00000001
 #define STOP_COND			0x00000002
 #define MASTER_TX_MODE		0x600
-#define NAME_BYTE_LENGTH	0xA
+#define NAME_BYTE_LENGTH	13
 
 
 
@@ -161,14 +164,6 @@ int is_i2c_write_ready(void){
 
 void clear_i2c_write_ready(void){
 			HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = XRDY_BIT;
-}
-
-void clear_access_err(void){
-	HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = AERR_BIT;
-}
-
-void clear_ardy_bit(void){
-	HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = ARDY_BIT;
 }
 
 int	is_i2c_read_ready(void){
@@ -316,15 +311,21 @@ void init_display(void){
 				}
 	}
 
-	while(((HWREG(I2C1_BASE + I2C_CNT) & BUFSTAT_VAL) != 0) && (((HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) & ARDY_BIT) && ARDY_BIT) != 1)){
-		delay(2000);
+	while(((HWREG(I2C1_BASE + I2C_CNT) & BUFSTAT_VAL) < NUM_OF_DBYTES) && ((HWREG(I2C1_BASE + I2C_CNT) & BUFSTAT_VAL) != 0)) {
+		delay(1000);
 	}
 
-	clear_ardy_bit();
+	HWREG(I2C1_BASE + I2C_CON) = 0;
 
 }
 
 void send_name(void){
+
+	HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = 0x00000114;
+
+	HWREG(I2C1_BASE + I2C_CON) = I2C1_ENABLE;	//�Write 0x8000 to I2C_CON (Configuration Register) offset 0xA4 to take out of reset, enable I2C1 module�
+
+	config_master_transmitter();
 
 	unsigned int current_DCOUNT;
 
@@ -346,14 +347,44 @@ void send_name(void){
 					
 					switch(NAME_BYTE_LENGTH-current_DCOUNT){
 						case 0:
-							write_to_bus(WRITE_TO);
+							write_to_bus(WRITE_TO_WCO);
 							break;
 						case 1:
-							write_to_bus(CGRAM_SET);
+							write_to_bus(SET_DDRAM);
 							break;
 						case 2:
-							write_to_bus(0x00);
+							write_to_bus(WRITE_TO_RAM);
 							break;
+						case 3:
+							write_to_bus('M');
+							break;
+						case 4:
+							write_to_bus('i');
+							break;
+						case 5:
+							write_to_bus('k');
+							break;
+						case 6:
+							write_to_bus('e');
+							break;
+						case 7:
+							write_to_bus(' ');
+							break;
+						case 8:
+							write_to_bus('E');
+							break;
+						case 9:
+							write_to_bus('s');
+							break;
+						case 10:
+							write_to_bus('c');
+							break;
+						case 11:
+							write_to_bus('u');
+							break;
+						case 12:
+							write_to_bus('e');
+							
 					}
 				}
 	}
@@ -368,6 +399,8 @@ int main(void){
 	i2c_init();
 
 	init_display();
+
+	send_name();
 
 	wait();
     return 1;
