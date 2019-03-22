@@ -1,6 +1,6 @@
 /** ECE 372 Project 2
 *	Utilizes I2C1 to communicate with display board.
-*	Polling Version
+*	Interrupt Version
 *	Author: Michael Escue
 */
 
