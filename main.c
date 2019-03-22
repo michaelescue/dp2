@@ -78,6 +78,7 @@
 #define RXTRSH_VAL			0x00003F00
 #define AERR_BIT			0x00000080
 #define DATA_VAL			0xFF
+#define BUFSTAT_VAL			0x0000003F
 
 //I2C Communication Defines
 #define SLAVE_ADDR			0x78
@@ -264,7 +265,7 @@ void init_display(void){
 
 	while((HWREG(I2C1_BASE + I2C_CNT) & DCOUNT_VAL) > 0){
 		
-		current_DCOUNT = HWREG(I2C1_BASE + I2C_BUFSTAT) & ;
+		current_DCOUNT = HWREG(I2C1_BASE + I2C_BUFSTAT) & BUFSTAT_VAL;
 
 				if(is_i2c_write_ready()){//If ready to write
 					
