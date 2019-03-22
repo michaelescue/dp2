@@ -86,6 +86,7 @@
 #define START_COND			0x00000001
 #define STOP_COND			0x00000002
 #define MASTER_TX_MODE		0x600
+#define NAME_BYTE_LENGTH	0xA
 
 
 
@@ -263,7 +264,7 @@ void init_display(void){
 
 	startstop_condition();
 
-	while((HWREG(I2C1_BASE + I2C_CNT) & DCOUNT_VAL) > 0){
+	while((HWREG(I2C1_BASE + I2C_BUFSTAT) & BUFSTAT_VAL) > 0){
 		
 		current_DCOUNT = HWREG(I2C1_BASE + I2C_BUFSTAT) & BUFSTAT_VAL;
 
@@ -312,6 +313,58 @@ void init_display(void){
 	}
 }
 
+	
+void send_name(unsigned char *text){
+	//Slave address pre-transmission.
+	HWREG(I2C1_BASE + I2C_SA) = SLAVE_ADDR;	//"Write 0x78 to I2C_SA (Slave Address  Register) offset 0xAC  Slave address value"
+
+	//Number of Data Bytes pre-transmission.
+	HWREG(I2C1_BASE + I2C_CNT) = NAME_BYTE_LENGTH;		//"Write 0x9 to I2C_CNT (Data Count Register) offset 0x98  to set number of transmission Bytes"
+
+	//Initiate Transmission
+	x = HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW);		//"Read mask 0x00001000 from I2C_IRQSTATUS_RAW (I2C Status Raw  Register) offset 0x24 to check bus status.
+	x = (x & BF_BIT);				//Mask.
+
+	if(x == 0x00000000){				//"If BB is 0, stop condition has been generated."
+
+		x = HWREG(I2C1_BASE + I2C_CON);	//"Read-Modify-Write 0x3 to I2C_CON (Configuration Register) offset 0xA4 to queue Start/Stop Condition.�
+		x = (x | 0x00000003);			//Mask.
+		HWREG(I2C1_BASE + I2C_CON) = x;	//Write back.
+		x = HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW);		//�Read mask 0x00000008 I2C_IRQSTATUS_RAW (I2C Status Raw Register) offset 0x24 see if data is ready.�
+		x = (x & RRDY_BIT);				//Mask.
+
+		if(x == RRDY_RDY){				//"If RRDY is "1", data is ready for read."
+
+			y = HWREG(I2C1_BASE + I2C_DATA);	//"Read I2C_DATA (Data Access Register) offset 0x9C."
+			HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = RRDY_BIT;	//�If "1", Write 0x00000008 to I2C_IRQSTATUS (Status Register) offset 0x28  to Clear RRDY�
+
+		}
+
+		if(x == XRDY_RDY){				//If ready to write
+
+			write_to_bus(CGRAM_SET);
+
+		}
+
+		unsigned int starting_DCOUNT_val = HWREG(I2C1_BASE + I2C_CNT);		//Initial DCOUNT value (after single send)
+
+		while(HWREG(I2C1_BASE + I2C_CNT) > 0){		//While DCOUNT > 0
+
+			unsigned int current_DCOUNT_val = HWREG(I2C1_BASE + I2C_CNT);		//Update DCOUNT value
+			x = HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW);		//�Read mask 0x00000010 from I2C_IRQSTATUS_RAW (I2C Status Raw  Register) offset 0x24 to see if write ready�
+			x = (x & XRDY_BIT);				//Mask.
+
+			if(x == XRDY_RDY){				//If ready to write
+
+				unsigned int data_byte_num = starting_DCOUNT_val - current_DCOUNT_val;
+				write_to_bus(*(text + data_byte_num));
+				HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = XRDY_BIT;	//�If "1", Write 0x00000010 to I2C_IRQSTATUS (Status Register) offset 0x28 to clear XRDY.�
+
+				}
+			}
+		}
+}
+
 
 int main(void){
 
@@ -325,7 +378,7 @@ int main(void){
 
 	i2c_init();
 	init_display();
-	//send_name(text);
+	send_name(text);
 
 	wait();
     return 1;
