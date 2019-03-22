@@ -55,17 +55,18 @@
 #define IRQ_DISABLED		0x0000
 
 // Data Byte Defines
-#define WRITE_TO			0x00
+#define WRITE_TO			0b00000000
+#define WRITE_TO_INS		0b01000000
 #define FUNCTION_SET0		0x38
 #define FUNCTION_SET1		0x39
 #define BIAS_SET			0x14
-#define CONTRAST_SET		0x78
+#define CONTRAST_SET		0b01110001
 #define PWR_ICON_CON_SET	0x5E
 #define FOLLOWER_SET_ON		0x6D
 #define DISPLAY_SET_ON		0x0C
 #define CLR_DISPLAY			0x01
 #define ENTRY_MODE			0x06
-#define CGRAM_SET			0x40
+#define CGRAM_SET			0x41
 
 // Mask Defines
 #define DCOUNT_VAL	 		0x0000FFFF
@@ -80,10 +81,11 @@
 #define AERR_BIT			0x00000080
 #define DATA_VAL			0xFF
 #define BUFSTAT_VAL			0x0000003F
+#define ARDY_BIT			0x00000004
 
 //I2C Communication Defines
 #define SLAVE_ADDR			0b0111100
-#define NUM_OF_DBYTES		0x8
+#define NUM_OF_DBYTES		10
 #define START_COND			0x00000001
 #define STOP_COND			0x00000002
 #define MASTER_TX_MODE		0x600
@@ -107,10 +109,6 @@ void delay(unsigned long int y){
 	while(y>0){
 		y--;
 	}
-}
-
-void clear_access_err(void){
-	HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = AERR_BIT;
 }
 
 void stack_init(void){
@@ -163,6 +161,14 @@ int is_i2c_write_ready(void){
 
 void clear_i2c_write_ready(void){
 			HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = XRDY_BIT;
+}
+
+void clear_access_err(void){
+	HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = AERR_BIT;
+}
+
+void clear_ardy_bit(void){
+	HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = ARDY_BIT;
 }
 
 int	is_i2c_read_ready(void){
@@ -221,7 +227,8 @@ void set_num_databytes(unsigned int y){
 void write_to_bus(unsigned char x){
 	x = (x & DATA_VAL );
 	HWREG(I2C1_BASE + I2C_DATA) = x;	//Write to data bus.
-
+	clear_i2c_write_ready();
+	delay(2000);
 }
 
 void set_slave_addr(unsigned int x){
@@ -273,38 +280,34 @@ void init_display(void){
 					
 					switch(NUM_OF_DBYTES-current_DCOUNT){
 						case 0:
-							write_to_bus(FUNCTION_SET0);
-							clear_i2c_write_ready();
+							write_to_bus(WRITE_TO);
 							break;
 						case 1:
 							write_to_bus(FUNCTION_SET0);
-							clear_i2c_write_ready();
 							break;
 						case 2:
 							write_to_bus(FUNCTION_SET1);
-							clear_i2c_write_ready();
 							break;
 						case 3:
 							write_to_bus(BIAS_SET);
-							clear_i2c_write_ready();
 							break;
 						case 4:
 							write_to_bus(CONTRAST_SET);
-							clear_i2c_write_ready();
 							break;
 						case 5:
 							write_to_bus(PWR_ICON_CON_SET);
-							clear_i2c_write_ready();
 							break;
 						case 6:
 							write_to_bus(FOLLOWER_SET_ON);
-							clear_i2c_write_ready();
 							break;
 						case 7:
 							write_to_bus(DISPLAY_SET_ON);
-							clear_i2c_write_ready();
 							break;
-						default:
+						case 8:
+							write_to_bus(CLR_DISPLAY);
+							break;
+						case 9:
+							write_to_bus(ENTRY_MODE);
 							break;
 					}
 				}
@@ -312,44 +315,16 @@ void init_display(void){
 
 				}
 	}
-	while((HWREG(I2C1_BASE + I2C_CNT) & BUFSTAT_VAL) != 0){
-		current_DCOUNT = HWREG(I2C1_BASE + I2C_CNT) & BUFSTAT_VAL;
-		switch(current_DCOUNT){
-						case 0:
-							delay(1);
-							break;
-						case 1:
-							delay(1);
-							break;
-						case 2:
-							delay(1);
-							break;
-						case 3:
-							delay(1);
-							break;
-						case 4:
-							delay(1);
-							break;
-						case 5:
-							delay(1);
-							break;
-						case 6:
-							delay(1);
-							break;
-						case 7:
-							delay(1);
-							break;
-						default:
-							delay(1);
-							break;
-			}
+
+	while(((HWREG(I2C1_BASE + I2C_CNT) & BUFSTAT_VAL) != 0) && (((HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) & ARDY_BIT) && ARDY_BIT) != 1)){
+		delay(2000);
 	}
+
+	clear_ardy_bit();
 
 }
 
-
-	
-void send_name(unsigned char *text){
+void send_name(void){
 
 	unsigned int current_DCOUNT;
 
@@ -358,6 +333,7 @@ void send_name(unsigned char *text){
 	set_num_databytes(NAME_BYTE_LENGTH);
 
 	while(is_bus_free() != TRUE){
+
 	}
 
 	startstop_condition();
@@ -368,21 +344,22 @@ void send_name(unsigned char *text){
 
 				if(is_i2c_write_ready()){//If ready to write
 					
-				write_to_bus(*(text + (NAME_BYTE_LENGTH - current_DCOUNT)));
-
-				}
-				else {
-
+					switch(NAME_BYTE_LENGTH-current_DCOUNT){
+						case 0:
+							write_to_bus(WRITE_TO);
+							break;
+						case 1:
+							write_to_bus(CGRAM_SET);
+							break;
+						case 2:
+							write_to_bus(0x00);
+							break;
+					}
 				}
 	}
 }
 
-
 int main(void){
-
-	unsigned char mystring[] = "Mike Escue";
-	unsigned char *text;
-	text = mystring;
 
 	set_debug();
 
@@ -391,10 +368,6 @@ int main(void){
 	i2c_init();
 
 	init_display();
-
-	while(is_bus_free() != TRUE){
-	}
-	send_name(text);
 
 	wait();
     return 1;
