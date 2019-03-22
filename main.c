@@ -22,7 +22,8 @@
 // Control Module Defines
 #define CONF_SPI0_CS0_SCL	0x95C
 #define CONF_SPI0_D1_SDA	0x958
-#define MODE2				0x22
+#define MODE2				0x22 //0x22 seemed to be working.
+#define MODE2_NOREC			0x2
 
 // Peripheral Control Module Defines
 #define CM_PER_I2C1_CLKCTRL 0x48
@@ -233,7 +234,7 @@ void i2c_init(void){
 
 	//P9 Connector settings.
 	HWREG(CTRLMOD_BASE + CONF_SPI0_CS0_SCL) = MODE2;	//�Write 0x2 to conf_spi0_cs0 offset 0x95C to enable (SCL) for MODE2 w/o pullup�
-	HWREG(CTRLMOD_BASE + CONF_SPI0_D1_SDA) = MODE2;	//�Write 0x2 to conf_spi0_d1 offset 0x958 to enable  (SDA) for MODE2 w/o pullup�
+	HWREG(CTRLMOD_BASE + CONF_SPI0_D1_SDA) = MODE2_NOREC;	//�Write 0x2 to conf_spi0_d1 offset 0x958 to enable  (SDA) for MODE2 w/o pullup�
 
 	//Enable Clock to I2C1.
 	HWREG(CM_PER_BASE + CM_PER_I2C1_CLKCTRL) = CLK_ENABLE;	//�Write 0x2 to CM_PER_I2C1_CLKCTRL offset 0x48  to enable I2C1 Clock.�
@@ -311,58 +312,69 @@ void init_display(void){
 
 				}
 	}
+	while((HWREG(I2C1_BASE + I2C_CNT) & BUFSTAT_VAL) != 0){
+		current_DCOUNT = HWREG(I2C1_BASE + I2C_CNT) & BUFSTAT_VAL;
+		switch(current_DCOUNT){
+						case 0:
+							delay(1);
+							break;
+						case 1:
+							delay(1);
+							break;
+						case 2:
+							delay(1);
+							break;
+						case 3:
+							delay(1);
+							break;
+						case 4:
+							delay(1);
+							break;
+						case 5:
+							delay(1);
+							break;
+						case 6:
+							delay(1);
+							break;
+						case 7:
+							delay(1);
+							break;
+						default:
+							delay(1);
+							break;
+			}
+	}
+
 }
+
 
 	
 void send_name(unsigned char *text){
-	//Slave address pre-transmission.
-	HWREG(I2C1_BASE + I2C_SA) = SLAVE_ADDR;	//"Write 0x78 to I2C_SA (Slave Address  Register) offset 0xAC  Slave address value"
 
-	//Number of Data Bytes pre-transmission.
-	HWREG(I2C1_BASE + I2C_CNT) = NAME_BYTE_LENGTH;		//"Write 0x9 to I2C_CNT (Data Count Register) offset 0x98  to set number of transmission Bytes"
+	unsigned int current_DCOUNT;
 
-	//Initiate Transmission
-	x = HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW);		//"Read mask 0x00001000 from I2C_IRQSTATUS_RAW (I2C Status Raw  Register) offset 0x24 to check bus status.
-	x = (x & BF_BIT);				//Mask.
+	set_slave_addr(SLAVE_ADDR);
 
-	if(x == 0x00000000){				//"If BB is 0, stop condition has been generated."
+	set_num_databytes(NAME_BYTE_LENGTH);
 
-		x = HWREG(I2C1_BASE + I2C_CON);	//"Read-Modify-Write 0x3 to I2C_CON (Configuration Register) offset 0xA4 to queue Start/Stop Condition.�
-		x = (x | 0x00000003);			//Mask.
-		HWREG(I2C1_BASE + I2C_CON) = x;	//Write back.
-		x = HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW);		//�Read mask 0x00000008 I2C_IRQSTATUS_RAW (I2C Status Raw Register) offset 0x24 see if data is ready.�
-		x = (x & RRDY_BIT);				//Mask.
+	while(is_bus_free() != TRUE){
+	}
 
-		if(x == RRDY_RDY){				//"If RRDY is "1", data is ready for read."
+	startstop_condition();
 
-			y = HWREG(I2C1_BASE + I2C_DATA);	//"Read I2C_DATA (Data Access Register) offset 0x9C."
-			HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = RRDY_BIT;	//�If "1", Write 0x00000008 to I2C_IRQSTATUS (Status Register) offset 0x28  to Clear RRDY�
+	while((HWREG(I2C1_BASE + I2C_BUFSTAT) & BUFSTAT_VAL) > 0){
+		
+		current_DCOUNT = HWREG(I2C1_BASE + I2C_BUFSTAT) & BUFSTAT_VAL;
 
-		}
-
-		if(x == XRDY_RDY){				//If ready to write
-
-			write_to_bus(CGRAM_SET);
-
-		}
-
-		unsigned int starting_DCOUNT_val = HWREG(I2C1_BASE + I2C_CNT);		//Initial DCOUNT value (after single send)
-
-		while(HWREG(I2C1_BASE + I2C_CNT) > 0){		//While DCOUNT > 0
-
-			unsigned int current_DCOUNT_val = HWREG(I2C1_BASE + I2C_CNT);		//Update DCOUNT value
-			x = HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW);		//�Read mask 0x00000010 from I2C_IRQSTATUS_RAW (I2C Status Raw  Register) offset 0x24 to see if write ready�
-			x = (x & XRDY_BIT);				//Mask.
-
-			if(x == XRDY_RDY){				//If ready to write
-
-				unsigned int data_byte_num = starting_DCOUNT_val - current_DCOUNT_val;
-				write_to_bus(*(text + data_byte_num));
-				HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = XRDY_BIT;	//�If "1", Write 0x00000010 to I2C_IRQSTATUS (Status Register) offset 0x28 to clear XRDY.�
+				if(is_i2c_write_ready()){//If ready to write
+					
+				write_to_bus(*(text + (NAME_BYTE_LENGTH - current_DCOUNT)));
 
 				}
-			}
-		}
+				else {
+
+				}
+	}
 }
 
 
@@ -377,6 +389,8 @@ int main(void){
 	stack_init();
 
 	i2c_init();
+	while(is_bus_free() != TRUE){
+		}
 	init_display();
 	send_name(text);
 
