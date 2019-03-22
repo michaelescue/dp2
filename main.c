@@ -23,7 +23,7 @@
 #define CONF_SPI0_CS0_SCL	0x95C
 #define CONF_SPI0_D1_SDA	0x958
 #define MODE2				0x22 //0x22 seemed to be working.
-#define MODE2_NOREC			0x2
+//#define MODE2_NOREC			0x2 BOth pins must be receivers.
 
 // Peripheral Control Module Defines
 #define CM_PER_I2C1_CLKCTRL 0x48
@@ -82,7 +82,7 @@
 #define BUFSTAT_VAL			0x0000003F
 
 //I2C Communication Defines
-#define SLAVE_ADDR			0x78
+#define SLAVE_ADDR			0b0111100
 #define NUM_OF_DBYTES		0x8
 #define START_COND			0x00000001
 #define STOP_COND			0x00000002
@@ -234,7 +234,7 @@ void i2c_init(void){
 
 	//P9 Connector settings.
 	HWREG(CTRLMOD_BASE + CONF_SPI0_CS0_SCL) = MODE2;	//�Write 0x2 to conf_spi0_cs0 offset 0x95C to enable (SCL) for MODE2 w/o pullup�
-	HWREG(CTRLMOD_BASE + CONF_SPI0_D1_SDA) = MODE2_NOREC;	//�Write 0x2 to conf_spi0_d1 offset 0x958 to enable  (SDA) for MODE2 w/o pullup�
+	HWREG(CTRLMOD_BASE + CONF_SPI0_D1_SDA) = MODE2;	//�Write 0x2 to conf_spi0_d1 offset 0x958 to enable  (SDA) for MODE2 w/o pullup�
 
 	//Enable Clock to I2C1.
 	HWREG(CM_PER_BASE + CM_PER_I2C1_CLKCTRL) = CLK_ENABLE;	//�Write 0x2 to CM_PER_I2C1_CLKCTRL offset 0x48  to enable I2C1 Clock.�
@@ -389,9 +389,11 @@ int main(void){
 	stack_init();
 
 	i2c_init();
-	while(is_bus_free() != TRUE){
-		}
+
 	init_display();
+
+	while(is_bus_free() != TRUE){
+	}
 	send_name(text);
 
 	wait();
