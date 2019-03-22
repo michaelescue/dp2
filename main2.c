@@ -19,7 +19,6 @@
 #define I2C1_BASE			0x4802A000
 #define DEBUGSS_DRM_BASE	0x4B160000
 #define INTC_BASE           0x48200000
-#define DMTIMER2_BASE       0x48040000
 
 // Interrupt Module Defines
 #define INTC_PENDING_IRQ2   0xD8
@@ -39,8 +38,6 @@
 // Peripheral Control Module Defines
 #define CM_PER_I2C1_CLKCTRL 0x48
 #define CLK_ENABLE			0x2
-#define CM_PER_TIMER2_CLK   0x80
-#define PRCMCLKSEL_TIMER2   0x508
 
 // DRM Module Defines
 #define I2C_1_SUSPEND_CTRL	0x22C // Used for proper suspension of I2C during debug.
@@ -263,16 +260,6 @@ void send_name_initiate(void){
 	startstop_condition();
 
 }
-
-void timer2init(void){
-    HWREG(CM_PER_BASE + CM_PER_TIMER2_CLK) = CLK_ENABLE;
-    HWREG(CM_PER_BASE + PRCMCLKSEL_TIMER2) = CLK_ENABLE;
-    HWREG(DMTIMER2_BASE + 0x10) = 0x1;
-    HWREG(0x4804002C) = 0x2;
-    HWREG(0x48040040) = 0xFFFFC000;
-    HWREG(0x4804003C) = 0xFFFFC000;
-    
-}   
 
 void i2c_init(void){
 
