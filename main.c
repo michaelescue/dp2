@@ -8,6 +8,10 @@
 
 #define HWREG(x) (*((volatile unsigned int *)(x)))
 
+// Common Boolean Defines
+#define TRUE 				1
+#define FALSE 				0
+
 // Base Module Defines
 #define	CTRLMOD_BASE		0x44E10000
 #define CM_PER_BASE			0x44E00000
@@ -34,6 +38,7 @@
 #define I2C_OA				0xA8
 #define I2C_IRQENABLE_SET	0x2C
 #define I2C_BUF				0x94
+#define	I2C_BUFSTAT			0xC0
 
 // I2C Register Values
 #define _12MHZ_CLK			0x03
@@ -55,7 +60,6 @@
 #define CLR_DISPLAY			0x01
 #define ENTRY_MODE			0x06
 #define CGRAM_SET			0x40
-#define	BUF_STAT			0xC0
 
 // Mask Defines
 #define DCOUNT_VAL	 		0x0000FFFF
@@ -64,9 +68,10 @@
 #define RRDY_BIT			0x00000008
 #define RRDY_RDY			0x00000008
 #define BF_BIT				0x00001000
-#define BF_FREE				0
+#define BUS_IS_FREE			0
 #define TXTRSH_VAL			0x0000003F
 #define RXTRSH_VAL			0x00003F00
+#define AERR_BIT			0x00000080
 
 //I2C Communication Defines
 #define SLAVE_ADDR			0x78
@@ -87,6 +92,16 @@ void wait(void){
 	while(1){
 		// Endless loop
 	};
+}
+
+void delay(unsigned int y){
+	while(y>0){
+		y--;
+	}
+}
+
+void clear_access_err(void){
+	HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW) = AERR_BIT;
 }
 
 void stack_init(void){
@@ -122,7 +137,7 @@ void int_handler(void){
 int is_bus_free(void){
 	x = HWREG(I2C1_BASE + I2C_IRQSTATUS_RAW);		//"Read mask 0x00001000 from I2C_IRQSTATUS_RAW (I2C Status Raw  Register) offset 0x24 to check bus status.
 	x = (x & BF_BIT);				//Mask.
-	if(x == BF_FREE) return 1;
+	if(x == BUS_IS_FREE) return 1;
 	else return 0;
 }
 
@@ -200,8 +215,8 @@ void i2c_init(void){
 	HWREG(I2C1_BASE + I2C_CON) = I2C1_ENABLE;	//�Write 0x8000 to I2C_CON (Configuration Register) offset 0xA4 to take out of reset, enable I2C1 module�
 	config_master_transmitter();
 	HWREG(I2C1_BASE + I2C_IRQENABLE_SET) = IRQ_DISABLED;	//"Write 0x0000 to I2C_IRQENABLE_SET (Interrupt Enable Set Register) offset 0x2C  to enable Polling�
-	set_buf_txtrsh(8);
-	set_buf_rxtrsh(8);
+	set_buf_txtrsh(0);
+	set_buf_rxtrsh(0);
 }
 
 void write_to_bus(unsigned char x){
@@ -221,13 +236,17 @@ void init_display(void){
 
 	set_num_databytes(NUM_OF_DBYTES);
 
-	starting_DCOUNT_val = HWREG(I2C1_BASE + I2C_CNT) & DCOUNT_VAL;		//Initial DCOUNT value
+	//	starting_DCOUNT_val = HWREG(I2C1_BASE + I2C_CNT) & DCOUNT_VAL;		//Initial DCOUNT value
 
-	stop_condition();
+	clear_access_err();
 
-	while((HWREG(I2C1_BASE + BUF_STAT) & DCOUNT_VAL) > 0){
+	while(is_bus_free() != TRUE){
+		// Wait.
+	}
 
 	start_condition();
+
+	while((HWREG(I2C1_BASE + I2C_BUFSTAT) & DCOUNT_VAL) > 0){
 
 	//Initiate Transmission
 	if(is_i2c_read_ready()){				//"If RRDY is "1", data is ready for read."
@@ -236,14 +255,18 @@ void init_display(void){
 
 	}
 
-		current_remaining_val = HWREG(I2C1_BASE + 0xC0);		//Update remaining to be written to buffer.
-		current_remaining_val = current_remaining_val & 0x003F;
+	/* unused current value tracker.
+		current_remaining_val = HWREG(I2C1_BASE + I2C_BUFSTAT);		//Update remaining to be written to buffer.
+		current_remaining_val = current_remaining_val & TXTRSH_VAL;
+	*/
 
 			if(is_i2c_write_ready()){				//If ready to write
 
 				data_byte_num = starting_DCOUNT_val - current_remaining_val;
+
 				switch(data_byte_num){
 					case 0:
+						delay(50);
 						write_to_bus(WRITE_TO);
 						break;
 					case 1:
@@ -272,7 +295,10 @@ void init_display(void){
 				}
 			}
 		}
+
+	stop_condition();
 	clear_i2c_write_ready();
+
 }
 	
 void send_name(unsigned char *text){
